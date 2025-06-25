@@ -224,5 +224,6 @@ int main()
 		stream << pixel;
 	}
 
+	stream.close();
 	return 0;
 }
