@@ -5,7 +5,8 @@
 #include <limits>
 #include <algorithm>
 
-double degreesToRadians(double degrees) {
+double degreesToRadians(double degrees) 
+{
 	return degrees * M_PI / 180.0;
 }
 
@@ -26,10 +27,11 @@ struct Color
 	static const Color Gray;
 };
 
-std::ostream& operator<<(std::ostream& stream, const Color& color) {
+std::ostream& operator<<(std::ostream& stream, const Color& color) 
+{
 	auto toByte = [](float c) -> char {
 		return static_cast<char>(std::clamp(c, 0.0f, 1.0f) * 255.0f);
-		};
+	};
 	
 	stream << toByte(color.r) << toByte(color.g) << toByte(color.b);
 	return stream;
@@ -111,11 +113,13 @@ bool IsIntersect(const Ray& ray, const Sphere& sphere, float& outDist)
 	float t2 = (-b + sqrtDiscriminant) / (2.0f);
 
 	// 양수 t만 유효 (광선의 앞쪽에서 교차)
-	if (t1 >= 0.0f) {
+	if (t1 >= 0.0f) 
+	{
 		outDist = t1;
 		return true;
 	}
-	else if (t2 >= 0.0f) {
+	else if (t2 >= 0.0f) 
+	{
 		outDist = t2;
 		return true;
 	}
@@ -126,6 +130,7 @@ bool IsIntersect(const Ray& ray, const Sphere& sphere, float& outDist)
 struct Scene
 {
 	std::vector<Sphere> spheres;
+	Color BackgroundColor;
 };
 
 // 카메라 위치 항상 0,0,0 기준.
@@ -150,6 +155,8 @@ void LoadScene(Scene& outScene)
 		{ {100, 200, 800}, 200, Color::Green },
 		{ {-300, -100, 700}, 100, Color::Blue }
 	};
+
+	outScene.BackgroundColor = Color::Gray;
 }
 
 Color CastRay(const Ray& ray, const Scene& scene)
@@ -175,11 +182,12 @@ Color CastRay(const Ray& ray, const Scene& scene)
 	}
 	else
 	{
-		return Color::Gray;
+		return scene.BackgroundColor;
 	}
 }
 
-int main() {
+int main() 
+{
 	constexpr int width = 1024;
 	constexpr int height = 768;
 	constexpr int numPixel = width * height;
@@ -211,7 +219,8 @@ int main() {
 
 	std::ofstream stream("./out.ppm", std::ios::binary);
 	stream << "P6\n" << width << " " << height << "\n255\n";
-	for (Color& pixel : frameBuffer) {
+	for (Color& pixel : frameBuffer) 
+	{
 		stream << pixel;
 	}
 
