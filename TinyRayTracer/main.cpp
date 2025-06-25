@@ -161,7 +161,7 @@ void LoadScene(Scene& outScene)
 
 Color CastRay(const Ray& ray, const Scene& scene)
 {
-	const Sphere* intersectSphere = nullptr;
+	const Sphere* intersectedSphere = nullptr;
 	float minT = std::numeric_limits<float>::max();
 	for (const Sphere& sphere : scene.spheres)
 	{
@@ -171,14 +171,14 @@ Color CastRay(const Ray& ray, const Scene& scene)
 			if (t < minT)
 			{
 				minT = t;
-				intersectSphere = &sphere;
+				intersectedSphere = &sphere;
 			}
 		}
 	}
 
-	if (intersectSphere)
+	if (intersectedSphere)
 	{
-		return intersectSphere->color;
+		return intersectedSphere->color;
 	}
 	else
 	{
