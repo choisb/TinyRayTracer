@@ -127,10 +127,43 @@ bool IsIntersect(const Ray& ray, const Sphere& sphere, float& outDist)
 	return false; // 둘 다 음수면 교차 지점이 광선 뒤에 있음
 }
 
-struct Scene
+class Scene
 {
+public:
+	Scene()
+	{
+		spheres = {
+			{ {0, 0, 600}, 200, Color::Red },
+			{ {100, 200, 800}, 200, Color::Green },
+			{ {-300, -100, 700}, 100, Color::Blue }
+		};
+
+		backgroundColor = Color::Gray;
+	}
+	Color GetBackgroundColor() const { return backgroundColor; }
+	const Sphere* FindIntersectedSphere(const Ray& ray) const
+	{
+		const Sphere* intersectedSphere = nullptr;
+		float minT = std::numeric_limits<float>::max();
+		for (const Sphere& sphere : spheres)
+		{
+			float t = 0.0f;
+			if (IsIntersect(ray, sphere, t))
+			{
+				if (t < minT)
+				{
+					minT = t;
+					intersectedSphere = &sphere;
+				}
+			}
+		}
+
+		return intersectedSphere;
+	}
+
+private:
 	std::vector<Sphere> spheres;
-	Color BackgroundColor;
+	Color backgroundColor;
 };
 
 // 카메라 위치 항상 0,0,0 기준.
@@ -148,33 +181,9 @@ struct Camera
 	Vector3 pos;
 };
 
-void LoadScene(Scene& outScene)
-{
-	outScene.spheres = {
-		{ {0, 0, 600}, 200, Color::Red },
-		{ {100, 200, 800}, 200, Color::Green },
-		{ {-300, -100, 700}, 100, Color::Blue }
-	};
-
-	outScene.BackgroundColor = Color::Gray;
-}
-
 Color CastRay(const Ray& ray, const Scene& scene)
 {
-	const Sphere* intersectedSphere = nullptr;
-	float minT = std::numeric_limits<float>::max();
-	for (const Sphere& sphere : scene.spheres)
-	{
-		float t = 0.0f;
-		if (IsIntersect(ray, sphere, t))
-		{
-			if (t < minT)
-			{
-				minT = t;
-				intersectedSphere = &sphere;
-			}
-		}
-	}
+	const Sphere* intersectedSphere = scene.FindIntersectedSphere(ray);
 
 	if (intersectedSphere)
 	{
@@ -182,7 +191,7 @@ Color CastRay(const Ray& ray, const Scene& scene)
 	}
 	else
 	{
-		return scene.BackgroundColor;
+		return scene.GetBackgroundColor();
 	}
 }
 
@@ -194,7 +203,6 @@ int main()
 	const Camera camera(100.f, 120.f, 100.f);
 
 	Scene scene;
-	LoadScene(scene);
 
 	std::vector<Color> frameBuffer(numPixel);
 
