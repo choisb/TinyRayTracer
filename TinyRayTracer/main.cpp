@@ -165,7 +165,7 @@ Color CastRay(const Ray& ray, const Scene& scene)
 	float minT = std::numeric_limits<float>::max();
 	for (const Sphere& sphere : scene.spheres)
 	{
-		float t = std::numeric_limits<float>::max();
+		float t = 0.0f;
 		if (IsIntersect(ray, sphere, t))
 		{
 			if (t < minT)
