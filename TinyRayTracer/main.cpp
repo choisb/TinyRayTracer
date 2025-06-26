@@ -57,8 +57,8 @@ const Color Color::white = { 1.0f, 1.0f, 1.0f };
 
 struct Material
 {
-	Color diffuseColor;
-	Color specularColor;
+	Color diffuseColor = Color::white;
+	Color specularColor = Color::white;
 	float specularExp = 0.0f; // shininess exponent
 	float kd = 0.0f; // diffuse coefficient
 	float ks = 0.0f; // specular coefficient
@@ -108,12 +108,17 @@ struct Vector3
 	float x = 0;
 	float y = 0;
 	float z = 0;
+
+	static const Vector3 zero;
+	static const Vector3 unit;
 };
+const Vector3 Vector3::zero = Vector3(0.0f, 0.0f, 0.0f);
+const Vector3 Vector3::unit = Vector3(1.0f, 1.0f, 1.0f);
+
 Vector3 operator*(float f, const Vector3& v) { return v * f; }
 
 struct Ray
 {
-	Ray() = default;
 	Ray(const Vector3& inPos, const Vector3& inDir) : pos(inPos), dir(inDir) {}
 	void ApplyPosBias(const Vector3& inNormal, float bias = 1e-3f) { pos = dir.Dot(inNormal) < 0 ? pos - inNormal * bias : pos + inNormal * bias; }
 	Vector3 pos;
@@ -122,14 +127,14 @@ struct Ray
 
 struct Sphere 
 {
-	Vector3 center;
-	float radius;
-	Material material;
+	Vector3 center = Vector3::zero;
+	float radius = 0.0f;
+	Material material = Material::matteGranite;
 };
 
 struct Light
 {
-	Vector3 pos;
+	Vector3 pos = Vector3::zero;
 	float intensity = 0;
 };
 
@@ -170,29 +175,28 @@ bool IsIntersect(const Ray& ray, const Sphere& sphere, float& outDist)
 
 struct HitResult
 {
-	Vector3 pos;
-	Vector3 normal;
-	Material material;
+	Vector3 pos = Vector3::zero;
+	Vector3 normal = Vector3::unit;
+	Material material = Material::matteGranite;
 };
 
 struct Scene
 {
 	std::vector<Sphere> spheres;
 	std::vector<Light> lights;
-	Color backgroundColor;
+	Color backgroundColor = Color::white;
 };
 
 // 카메라 위치 항상 0,0,0 기준.
 struct Camera
 {
-	Camera(float inScreenDistance, float inHorizontalFov, float inVerticalFov)
-		: screenDistance(inScreenDistance), pos(0.0f, 0.0f, 0.0f)
+	Camera(float inHorizontalFov, float inVerticalFov)
+		:pos(0.0f, 0.0f, 0.0f)
 	{
-		screenSize.x = static_cast<float>(std::tan(DegreesToRadians(inHorizontalFov * 0.5f))) * screenDistance;
-		screenSize.y = static_cast<float>(std::tan(DegreesToRadians(inVerticalFov * 0.5f))) * screenDistance;
+		screenSize.x = static_cast<float>(std::tan(DegreesToRadians(inHorizontalFov * 0.5f)));
+		screenSize.y = static_cast<float>(std::tan(DegreesToRadians(inVerticalFov * 0.5f)));
 	}
 
-	float screenDistance;
 	Vector2 screenSize;
 	Vector3 pos;
 };
@@ -313,7 +317,7 @@ int main()
 	constexpr int width = 1024;
 	constexpr int height = 768;
 	constexpr int numPixel = width * height;
-	const Camera camera(100.f, 120.f, 100.f);
+	const Camera camera(120.f, 100.f);
 	constexpr int rayTracingDepth = 4;
 
 	Scene scene;
@@ -329,10 +333,9 @@ int main()
 		for (int y = 0; y < height; ++y)
 		{
 			const int index = y * width + x;
-			Ray ray;
+			Ray ray(Vector3::zero, Vector3::unit);
 			ray.dir.x = (x - (width  * 0.5f)) * hRatio;
 			ray.dir.y = (y - (height * 0.5f)) * vRatio * (-1); // frame buffer 기준 +y가 하단이기 때문에 Flip
-			ray.dir.z = camera.screenDistance;
 			ray.dir.Normalize();
 			ray.pos = camera.pos;
 
