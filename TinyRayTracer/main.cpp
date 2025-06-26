@@ -27,9 +27,6 @@ struct Color
 	float b = 0;
 
 	Color operator*(float f) const { return Color(r * f, g * f, b * f); }
-	Color operator+(float f) const { return Color(r + f, g + f, b + f); }
-	Color& operator+=(float f) { return *this = *this + f; return *this; }
-
 
 	Color operator+(const Color& c) const { return Color(r + c.r, g + c.g, b + c.b); }
 	Color& operator+=(const Color& c) { *this = *this + c; return *this; }
@@ -37,7 +34,8 @@ struct Color
 	static const Color red;
 	static const Color green;
 	static const Color blue;
-	static const Color gray;
+	static const Color sky;
+	static const Color white;
 };
 Color operator*(float f, const Color& color) { return color * f; }
 
@@ -54,25 +52,30 @@ std::ostream& operator<<(std::ostream& stream, const Color& color)
 const Color Color::red = { 1.0f, 0.0f, 0.0f };
 const Color Color::green = { 0.0f, 1.0f, 0.0f };
 const Color Color::blue = { 0.0f, 0.0f, 1.0f };
-const Color Color::gray = { 0.3f, 0.3f, 0.3f };
+const Color Color::sky = { 0.52f, 0.68f, 0.92f };
+const Color Color::white = { 1.0f, 1.0f, 1.0f };
 
 struct Material
 {
 	Color diffuseColor;
-	float specularExp = 50.0f; // shininess exponent
-	float kd = 1.0f; // diffuse coefficient
-	float ks = 0.5f; // specular coefficient
+	Color specularColor;
+	float specularExp = 0.0f; // shininess exponent
+	float kd = 0.0f; // diffuse coefficient
+	float ks = 0.0f; // specular coefficient
+	float kr = 0.0f;  // reflectivity coefficient
 
-	static const Material Ruby;
-	static const Material Emerald;
-	static const Material Sapphire;
-	static const Material MatteGranite;
+	static const Material ruby;
+	static const Material emerald;
+	static const Material sapphire;
+	static const Material matteGranite;
+	static const Material mirror;
 };
 
-const Material Material::Ruby =			{ Color(0.6f, 0.05f, 0.1f),		150.0f, 0.5f, 0.9f };
-const Material Material::Emerald =		{ Color(0.0f, 0.4f, 0.2f),		100.0f, 0.6f, 0.8f };
-const Material Material::Sapphire =		{ Color(0.1f, 0.2f, 0.7f),		200.0f, 0.4f, 1.0f };
-const Material Material::MatteGranite = { Color(0.35f, 0.35f, 0.35f),	10.0f,	0.3f, 0.05f };
+const Material Material::ruby =			{ Color(0.6f, 0.05f, 0.1f),	 Color::white,	150.0f, 0.5f, 0.9f, 0.1f };
+const Material Material::emerald =		{ Color(0.0f, 0.4f, 0.2f),	 Color::white,	100.0f, 0.6f, 0.8f, 0.1f };
+const Material Material::sapphire =		{ Color(0.1f, 0.2f, 0.7f),	 Color::white,	200.0f, 0.4f, 1.0f, 0.1f };
+const Material Material::matteGranite = { Color(0.35f, 0.35f, 0.35f),Color::white,	10.0f,	0.3f, 0.05f, 0.0f };
+const Material Material::mirror =		{ Color(1.0f, 1.0f, 1.0f),	 Color::white,	1000.0f,0.1f, 1.0f, 0.8f};
 
 struct Vector2
 {
@@ -106,11 +109,13 @@ struct Vector3
 	float y = 0;
 	float z = 0;
 };
+Vector3 operator*(float f, const Vector3& v) { return v * f; }
 
 struct Ray
 {
 	Ray() = default;
 	Ray(const Vector3& inPos, const Vector3& inDir) : pos(inPos), dir(inDir) {}
+	void ApplyPosBias(const Vector3& inNormal, float bias = 1e-3f) { pos = dir.Dot(inNormal) < 0 ? pos - inNormal * bias : pos + inNormal * bias; }
 	Vector3 pos;
 	Vector3 dir;
 };
@@ -124,7 +129,7 @@ struct Sphere
 
 struct Light
 {
-	Vector3 Pos;
+	Vector3 pos;
 	float intensity = 0;
 };
 
@@ -195,10 +200,12 @@ struct Camera
 void LoadScene(Scene& outScene)
 {
 	outScene.spheres = {
-		{ Vector3(0,    0, 600),	200.0f, Material::Ruby },
-		{ Vector3(100,  200, 800),	200.0f, Material::Emerald },
-		{ Vector3(-300, -100, 700), 100.0f, Material::Sapphire },
-		{ Vector3(200, -150, 650),	150.0f, Material::MatteGranite }
+		{ Vector3(0,	50,	 400),	50.0f, Material::ruby },
+		{ Vector3(150,  200, 800),	150.0f, Material::emerald },
+		{ Vector3(-100, -100,400),  80.0f, Material::mirror },
+		{ Vector3(150, -100, 500),	80.0f, Material::matteGranite },
+		{ Vector3(-250, 150, 800),	150.0f, Material::mirror },
+		{ Vector3(50, -100, 850),	150.0f, Material::sapphire }
 	};
 
 	outScene.lights = {
@@ -207,7 +214,7 @@ void LoadScene(Scene& outScene)
 		{ {200, 400, 200},	1.0f}
 	};
 
-	outScene.backgroundColor = Color::gray;
+	outScene.backgroundColor = Color::sky;
 }
 
 bool CheckIntersect(const Ray& ray, const Scene& scene, HitResult& outHitResult)
@@ -242,8 +249,9 @@ bool CheckIntersect(const Ray& ray, const Scene& scene, HitResult& outHitResult)
 	}
 }
 
-Vector3 Reflect(const Vector3& lightDir, const Vector3& normal) {
-	return lightDir - normal * 2.f * (lightDir.Dot(normal));
+Vector3 Reflect(const Vector3& inDir, const Vector3& normal) 
+{
+	return inDir - 2.f * normal * (inDir.Dot(normal));
 }
 Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& normal, const Material& material, const Scene& scene)
 {
@@ -252,17 +260,17 @@ Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& norma
 
 	for (const Light& light : scene.lights)
 	{
-		Vector3 lightDir = light.Pos - pos;
+		Vector3 lightDir = light.pos - pos;
 		lightDir.Normalize();
-
-		const Vector3 shadowOrig = lightDir.Dot(normal) < 0 ? pos - lightDir * 1e-3f : pos + lightDir * 1e-3f; // 자신과 충돌 방지하기 위함.
-		Ray shadowRay(shadowOrig, lightDir);
+		
+		Ray shadowRay(pos, lightDir);
+		shadowRay.ApplyPosBias(normal);
 
 		HitResult hitResult;
 		if (CheckIntersect(shadowRay, scene, hitResult))
 		{
-			const float lightDistanceSquare = (light.Pos - shadowOrig).Square();
-			if ((hitResult.pos - shadowOrig).Square() < lightDistanceSquare)
+			const float lightDistanceSquare = (light.pos - shadowRay.pos).Square();
+			if ((hitResult.pos - shadowRay.pos).Square() < lightDistanceSquare)
 			{
 				continue;
 			}
@@ -272,20 +280,32 @@ Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& norma
 		specularLightIntensity += std::pow(std::max(0.f, Reflect(lightDir, normal).Dot(viewDir)), material.specularExp);
 	}
 
-	Color result = material.diffuseColor * material.kd * diffuseIntensity;
-	result += material.ks * specularLightIntensity;
+	Color result = material.kd * material.diffuseColor * diffuseIntensity;
+	result += material.ks * material.specularColor * specularLightIntensity;
 	return result;
 }
 
-Color CastRay(const Ray& ray, const Scene& scene)
+Color CastRay(const Ray& ray, const Scene& scene, int depth)
 {
 	HitResult hitResult;
-	if (!CheckIntersect(ray, scene, hitResult))
+	if (depth == 0 || !CheckIntersect(ray, scene, hitResult))
 	{
 		return scene.backgroundColor;
 	}
 
-	return CalcLight(ray.dir, hitResult.pos, hitResult.normal, hitResult.material, scene);
+	Color reflectColor;
+	if (hitResult.material.kr > 0.0f)
+	{
+		Vector3 reflectionDir = Reflect(ray.dir, hitResult.normal);
+		reflectionDir.Normalize();
+
+		Ray reflectionRay(hitResult.pos, reflectionDir);
+		reflectionRay.ApplyPosBias(hitResult.normal);
+
+		reflectColor = hitResult.material.kr * CastRay(reflectionRay, scene, depth - 1);
+	}
+
+	return CalcLight(ray.dir, hitResult.pos, hitResult.normal, hitResult.material, scene) + reflectColor;
 }
 
 int main() 
@@ -294,6 +314,7 @@ int main()
 	constexpr int height = 768;
 	constexpr int numPixel = width * height;
 	const Camera camera(100.f, 120.f, 100.f);
+	constexpr int rayTracingDepth = 4;
 
 	Scene scene;
 	LoadScene(scene);
@@ -315,7 +336,7 @@ int main()
 			ray.dir.Normalize();
 			ray.pos = camera.pos;
 
-			frameBuffer[index] = CastRay(ray, scene);
+			frameBuffer[index] = CastRay(ray, scene, rayTracingDepth);
 		}
 	}
 
