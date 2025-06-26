@@ -102,7 +102,8 @@ struct Vector3
 	{}
 	float Square() const { return x * x + y * y + z * z; }
 	float Length() const { return std::sqrt(Square()); }
-	void Normalize() { float len = Length(); if(len > 0.0f) *this /= len; }
+	void Normalize() { float len = Length(); if (len > 0.0f) *this /= len; }
+	Vector3 Normalized() const { Vector3 v = *this; v.Normalize(); return v; }
 	float Dot(const Vector3& other) const { return x * other.x + y * other.y + z * other.z; }
 
 	Vector3 operator*(float f) const { return Vector3(x * f, y * f, z * f); }
@@ -250,8 +251,7 @@ bool CheckIntersect(const Ray& ray, const Scene& scene, HitResult& outHitResult)
 	{
 		outHitResult.material = intersectedSphere->material;
 		outHitResult.pos = ray.pos + (ray.dir * minT);
-		outHitResult.normal = outHitResult.pos - intersectedSphere->center;
-		outHitResult.normal.Normalize();
+		outHitResult.normal = (outHitResult.pos - intersectedSphere->center).Normalized();
 
 		return true;
 	}
@@ -288,7 +288,7 @@ bool Refract(const Vector3& inDir, const Vector3& normal, float refractiveIndex,
 	}
 	else
 	{
-		outRefractDir = inDir * eta + n * (eta * cosi - sqrtf(k));
+		outRefractDir = (inDir * eta + n * (eta * cosi - sqrtf(k))).Normalized();
 		return true;
 	}
 }
@@ -300,8 +300,7 @@ Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& norma
 
 	for (const Light& light : scene.lights)
 	{
-		Vector3 lightDir = light.pos - pos;
-		lightDir.Normalize();
+		const Vector3 lightDir = (light.pos - pos).Normalized();
 		
 		Ray shadowRay(pos, lightDir);
 		shadowRay.ApplyPosBias(normal);
@@ -317,7 +316,8 @@ Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& norma
 		}
 
 		diffuseIntensitySum += light.intensity * std::max(0.0f, (lightDir.Dot(normal)));
-		specularIntensitySum += std::pow(std::max(0.f, Reflect(lightDir, normal).Dot(viewDir)), material.specularExp);
+		const Vector3 outLightDir = Reflect(lightDir, normal).Normalized();
+		specularIntensitySum += std::pow(std::max(0.f, outLightDir.Dot(viewDir)), material.specularExp);
 	}
 
 	Color result = material.kd * material.diffuseColor * diffuseIntensitySum;
@@ -336,8 +336,7 @@ Color CastRay(const Ray& ray, const Scene& scene, int depth)
 	Color reflectedColor;
 	if (hitResult.material.kr > 0.0f)
 	{
-		Vector3 reflectionDir = Reflect(ray.dir, hitResult.normal);
-		reflectionDir.Normalize();
+		const Vector3 reflectionDir = Reflect(ray.dir, hitResult.normal).Normalized();
 
 		Ray reflectionRay(hitResult.pos, reflectionDir);
 		reflectionRay.ApplyPosBias(hitResult.normal);
@@ -352,8 +351,6 @@ Color CastRay(const Ray& ray, const Scene& scene, int depth)
 		
 		if(Refract(ray.dir, hitResult.normal, hitResult.material.refractiveIndex, refractionDir))
 		{ 
-			refractionDir.Normalize();
-
 			Ray refractionRay(hitResult.pos, refractionDir);
 			refractionRay.ApplyPosBias(hitResult.normal);
 
@@ -376,7 +373,7 @@ int main()
 	constexpr int height = 768;
 	constexpr int numPixel = width * height;
 	const Camera camera(120.f, 100.f);
-	constexpr int rayTracingDepth = 4;
+	constexpr int rayTracingDepth = 10;
 
 	Scene scene;
 	LoadScene(scene);
