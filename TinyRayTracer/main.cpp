@@ -4,6 +4,12 @@
 #include <math.h>
 #include <limits>
 #include <algorithm>
+#include <assert.h>
+
+bool IsNearlyEqual(float a, float b, float epsilon = 1e-3f)
+{
+	return std::abs(a - b) < epsilon;
+}
 
 double degreesToRadians(double degrees) 
 {
@@ -12,19 +18,25 @@ double degreesToRadians(double degrees)
 
 struct Color
 {
+	Color() {}
+	Color(float inR, float inG, float inB)
+		:r(inR), g(inG), b(inB)
+	{}
 	float r = 0;
 	float g = 0;
 	float b = 0;
 
-	static const Color Red;
-	static const Color Green;
-	static const Color Blue;
-	static const Color Yellow;
-	static const Color Magenta;
-	static const Color Cyan;
-	static const Color White;
-	static const Color Black;
-	static const Color Gray;
+	Color operator*(float f) const { return Color(r * f, g * f, b * f); }
+
+	static const Color red;
+	static const Color green;
+	static const Color blue;
+	static const Color yellow;
+	static const Color magenta;
+	static const Color cyan;
+	static const Color white;
+	static const Color black;
+	static const Color gray;
 };
 
 std::ostream& operator<<(std::ostream& stream, const Color& color) 
@@ -37,15 +49,22 @@ std::ostream& operator<<(std::ostream& stream, const Color& color)
 	return stream;
 }
 
-const Color Color::Red = { 1.0f, 0.0f, 0.0f };
-const Color Color::Green = { 0.0f, 1.0f, 0.0f };
-const Color Color::Blue = { 0.0f, 0.0f, 1.0f };
-const Color Color::Yellow = { 1.0f, 1.0f, 0.0f };
-const Color Color::Magenta = { 1.0f, 0.0f, 1.0f };
-const Color Color::Cyan = { 0.0f, 1.0f, 1.0f };
-const Color Color::White = { 1.0f, 1.0f, 1.0f };
-const Color Color::Black = { 0.0f, 0.0f, 0.0f };
-const Color Color::Gray = { 0.3f, 0.3f, 0.3f };
+const Color Color::red = { 1.0f, 0.0f, 0.0f };
+const Color Color::green = { 0.0f, 1.0f, 0.0f };
+const Color Color::blue = { 0.0f, 0.0f, 1.0f };
+const Color Color::yellow = { 1.0f, 1.0f, 0.0f };
+const Color Color::magenta = { 1.0f, 0.0f, 1.0f };
+const Color Color::cyan = { 0.0f, 1.0f, 1.0f };
+const Color Color::white = { 1.0f, 1.0f, 1.0f };
+const Color Color::black = { 0.0f, 0.0f, 0.0f };
+const Color Color::gray = { 0.3f, 0.3f, 0.3f };
+
+struct Material
+{
+	Material(const Color& color) : diffuseColor(color) {}
+	Material() : diffuseColor() {}
+	Color diffuseColor;
+};
 
 struct Vector2
 {
@@ -68,9 +87,12 @@ struct Vector3
 	void Normalize() { float len = Length(); if(len > 0.0f) *this /= len; }
 	float Dot(const Vector3& other) const { return x * other.x + y * other.y + z * other.z; }
 
+	Vector3 operator*(float f) const { return Vector3(x * f, y * f, z * f); }
 	Vector3 operator/(float f) const { return Vector3(x / f, y / f, z / f); }
 	Vector3& operator/=(float f) { *this = *this / f; return *this; }
-	Vector3 operator-(const Vector3& other) const {	return Vector3(x - other.x, y - other.y, z - other.z);}
+
+	Vector3 operator-(const Vector3& v) const {	return Vector3(x - v.x, y - v.y, z - v.z); }
+	Vector3 operator+(const Vector3& v) const {	return Vector3(x + v.x, y + v.y, z + v.z); }
 
 	float x = 0;
 	float y = 0;
@@ -85,20 +107,27 @@ struct Ray
 
 struct Sphere 
 {
-	Sphere(const Vector3& inCenter, float inRadius, const Color& inColor)
-		:center(inCenter), radius(inRadius), color(inColor)
+	Sphere(const Vector3& inCenter, float inRadius, const Material& inMaterial)
+		:center(inCenter), radius(inRadius), material(inMaterial)
 	{}
 	Vector3 center;
 	float radius;
-	Color color;
+	Material material;
+};
+
+struct Light
+{
+	Vector3 Pos;
+	float intensity = 0;
 };
 
 bool IsIntersect(const Ray& ray, const Sphere& sphere, float& outDist)
 {
 	Vector3 centerToRay = ray.pos - sphere.center;
 
-	// float a = ray.dir.Square(); ray.dir.Square() 는 항상 1이기 때문에 근의 공식에서 생략.
-	float b = 2.0f * centerToRay.Dot(ray.dir);
+	// float a = ray.dir.Square(); 항상 1이기 때문에 근의 공식에서 생략.
+	assert(IsNearlyEqual(ray.dir.Square(), 1.0f) && "Ray direction must be normalized");
+	float b = 2.0f * (centerToRay.Dot(ray.dir));
 	float c = centerToRay.Square() - sphere.radius * sphere.radius;
 
 	float discriminant = b * b - 4 * c;
@@ -127,42 +156,17 @@ bool IsIntersect(const Ray& ray, const Sphere& sphere, float& outDist)
 	return false; // 둘 다 음수면 교차 지점이 광선 뒤에 있음
 }
 
-class Scene
+struct HitResult
 {
-public:
-	Scene()
-	{
-		spheres = {
-			{ {0, 0, 600}, 200, Color::Red },
-			{ {100, 200, 800}, 200, Color::Green },
-			{ {-300, -100, 700}, 100, Color::Blue }
-		};
+	Vector3 pos;
+	Vector3 normal;
+	Material material;
+};
 
-		backgroundColor = Color::Gray;
-	}
-	Color GetBackgroundColor() const { return backgroundColor; }
-	const Sphere* FindIntersectedSphere(const Ray& ray) const
-	{
-		const Sphere* intersectedSphere = nullptr;
-		float minT = std::numeric_limits<float>::max();
-		for (const Sphere& sphere : spheres)
-		{
-			float t = 0.0f;
-			if (IsIntersect(ray, sphere, t))
-			{
-				if (t < minT)
-				{
-					minT = t;
-					intersectedSphere = &sphere;
-				}
-			}
-		}
-
-		return intersectedSphere;
-	}
-
-private:
+struct Scene
+{
 	std::vector<Sphere> spheres;
+	std::vector<Light> lights;
 	Color backgroundColor;
 };
 
@@ -181,18 +185,70 @@ struct Camera
 	Vector3 pos;
 };
 
-Color CastRay(const Ray& ray, const Scene& scene)
+void LoadScene(Scene& outScene)
 {
-	const Sphere* intersectedSphere = scene.FindIntersectedSphere(ray);
+	outScene.spheres = {
+		{ {0, 0, 600}, 200, Color::red },
+		{ {100, 200, 800}, 200, Color::green },
+		{ {-300, -100, 700}, 100, Color::blue }
+	};
+
+	outScene.lights = {
+		{{-100, 300, 100}, 1.0f}
+	};
+
+	outScene.backgroundColor = Color::gray;
+}
+
+bool CheckIntersect(const Ray& ray, const Scene& scene, HitResult& outHitResult)
+{
+	const Sphere* intersectedSphere = nullptr;
+	float minT = std::numeric_limits<float>::max();
+	for (const Sphere& sphere : scene.spheres)
+	{
+		float t = 0.0f;
+		if (IsIntersect(ray, sphere, t))
+		{
+			if (t < minT)
+			{
+				minT = t;
+				intersectedSphere = &sphere;
+			}
+		}
+	}
 
 	if (intersectedSphere)
 	{
-		return intersectedSphere->color;
+		outHitResult.material = intersectedSphere->material;
+		outHitResult.pos = ray.pos + (ray.dir * minT);
+		outHitResult.normal = outHitResult.pos - intersectedSphere->center;
+		outHitResult.normal.Normalize();
+
+		return true;
 	}
 	else
 	{
-		return scene.GetBackgroundColor();
+		return false;
 	}
+}
+
+Color CastRay(const Ray& ray, const Scene& scene)
+{
+	HitResult hitResult;
+	if (CheckIntersect(ray, scene, hitResult) == false)
+	{
+		return scene.backgroundColor;
+	}
+
+	float diffuseIntensity = 0.0f;
+	for (const Light& light : scene.lights)
+	{
+		Vector3 lightDir = light.Pos - hitResult.pos;
+		lightDir.Normalize();
+		diffuseIntensity += light.intensity * std::max(0.0f, (lightDir.Dot(hitResult.normal)));
+	}
+	diffuseIntensity = std::clamp(diffuseIntensity, 0.0f, 1.0f);
+	return hitResult.material.diffuseColor * diffuseIntensity;
 }
 
 int main() 
@@ -203,6 +259,7 @@ int main()
 	const Camera camera(100.f, 120.f, 100.f);
 
 	Scene scene;
+	LoadScene(scene);
 
 	std::vector<Color> frameBuffer(numPixel);
 
