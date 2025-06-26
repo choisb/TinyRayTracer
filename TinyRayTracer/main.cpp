@@ -28,6 +28,11 @@ struct Color
 
 	Color operator*(float f) const { return Color(r * f, g * f, b * f); }
 	Color operator+(float f) const { return Color(r + f, g + f, b + f); }
+	Color& operator+=(float f) { return *this = *this + f; return *this; }
+
+
+	Color operator+(const Color& c) const { return Color(r + c.r, g + c.g, b + c.b); }
+	Color& operator+=(const Color& c) { *this = *this + c; return *this; }
 
 	static const Color red;
 	static const Color green;
@@ -104,6 +109,8 @@ struct Vector3
 
 struct Ray
 {
+	Ray() = default;
+	Ray(const Vector3& inPos, const Vector3& inDir) : pos(inPos), dir(inDir) {}
 	Vector3 pos;
 	Vector3 dir;
 };
@@ -238,29 +245,47 @@ bool CheckIntersect(const Ray& ray, const Scene& scene, HitResult& outHitResult)
 Vector3 Reflect(const Vector3& lightDir, const Vector3& normal) {
 	return lightDir - normal * 2.f * (lightDir.Dot(normal));
 }
-Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& normal, const Material& material, const std::vector<Light>& lights)
+Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& normal, const Material& material, const Scene& scene)
 {
 	float diffuseIntensity = 0.0f;
 	float specularLightIntensity = 0.0f;
 
-	for (const Light& light : lights)
+	for (const Light& light : scene.lights)
 	{
 		Vector3 lightDir = light.Pos - pos;
 		lightDir.Normalize();
+
+		const Vector3 shadowOrig = lightDir.Dot(normal) < 0 ? pos - lightDir * 1e-3f : pos + lightDir * 1e-3f; // 자신과 충돌 방지하기 위함.
+		Ray shadowRay(shadowOrig, lightDir);
+
+		HitResult hitResult;
+		if (CheckIntersect(shadowRay, scene, hitResult))
+		{
+			const float lightDistanceSquare = (light.Pos - shadowOrig).Square();
+			if ((hitResult.pos - shadowOrig).Square() < lightDistanceSquare)
+			{
+				continue;
+			}
+		}
+
 		diffuseIntensity += light.intensity * std::max(0.0f, (lightDir.Dot(normal)));
 		specularLightIntensity += std::pow(std::max(0.f, Reflect(lightDir, normal).Dot(viewDir)), material.specularExp);
 	}
-	return (material.kd * material.diffuseColor * diffuseIntensity) + (material.ks * specularLightIntensity);
+
+	Color result = material.diffuseColor * material.kd * diffuseIntensity;
+	result += material.ks * specularLightIntensity;
+	return result;
 }
+
 Color CastRay(const Ray& ray, const Scene& scene)
 {
 	HitResult hitResult;
-	if (CheckIntersect(ray, scene, hitResult) == false)
+	if (!CheckIntersect(ray, scene, hitResult))
 	{
 		return scene.backgroundColor;
 	}
 
-	return CalcLight(ray.dir, hitResult.pos, hitResult.normal, hitResult.material, scene.lights);
+	return CalcLight(ray.dir, hitResult.pos, hitResult.normal, hitResult.material, scene);
 }
 
 int main() 
