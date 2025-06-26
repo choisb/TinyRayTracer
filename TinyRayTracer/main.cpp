@@ -129,7 +129,7 @@ Vector3 operator-(const Vector3& v) { return v * -1.0f; }
 struct Ray
 {
 	Ray(const Vector3& inPos, const Vector3& inDir) : pos(inPos), dir(inDir) {}
-	void ApplyPosBias(const Vector3& inNormal, float bias = 1e-3f) { pos = dir.Dot(inNormal) < 0 ? pos - inNormal * bias : pos + inNormal * bias; }
+	void ApplyPosBias(const Vector3& inNormal, float bias = 1e-3f) { pos = dir.Dot(inNormal) < 0 ? pos - inNormal * bias : pos + inNormal * bias; } // Ray 충돌 검사시 출발 지점과의 충돌을 피해 Bias 적용
 	Vector3 pos;
 	Vector3 dir;
 };
