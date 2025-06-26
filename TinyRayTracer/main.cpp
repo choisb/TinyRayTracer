@@ -390,13 +390,13 @@ int main()
 	{
 		for (int y = 0; y < height; ++y)
 		{
-			Vector3 rayDir(	(x - (width * 0.5f)) * hRatio,
-							(y - (height * 0.5f)) * vRatio * (-1), // frame buffer 기준 +y가 하단이기 때문에 Flip
-							1.0f);
-
+			Vector3 rayDir;
+			rayDir.x = (x - (width * 0.5f)) * hRatio;
+			rayDir.y = (y - (height * 0.5f)) * vRatio * (-1); // frame buffer 기준 +y가 하단이기 때문에 Flip
+			rayDir.z = 1.0f;
 			rayDir.Normalize();
-			Ray ray(camera.pos, rayDir);
 
+			const Ray ray(camera.pos, rayDir);
 			const int index = y * width + x;
 			frameBuffer[index] = CastRay(ray, scene, rayTracingDepth);
 		}
