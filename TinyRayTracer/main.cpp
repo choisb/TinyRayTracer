@@ -31,9 +31,10 @@ struct Color
 	Color operator+(const Color& c) const { return Color(r + c.r, g + c.g, b + c.b); }
 	Color& operator+=(const Color& c) { *this = *this + c; return *this; }
 
-	static const Color red;
-	static const Color green;
-	static const Color blue;
+	static const Color ruby;
+	static const Color emerald;
+	static const Color sapphire;
+	static const Color granite;
 	static const Color sky;
 	static const Color white;
 };
@@ -49,9 +50,10 @@ std::ostream& operator<<(std::ostream& stream, const Color& color)
 	return stream;
 }
 
-const Color Color::red = { 1.0f, 0.0f, 0.0f };
-const Color Color::green = { 0.0f, 1.0f, 0.0f };
-const Color Color::blue = { 0.0f, 0.0f, 1.0f };
+const Color Color::ruby = { 0.6f, 0.05f, 0.1f };
+const Color Color::emerald = { 0.0f, 0.4f, 0.2f };
+const Color Color::sapphire = { 0.1f, 0.2f, 0.7f };
+const Color Color::granite = { 0.35f, 0.35f, 0.35f };
 const Color Color::sky = { 0.52f, 0.68f, 0.92f };
 const Color Color::white = { 1.0f, 1.0f, 1.0f };
 
@@ -60,22 +62,27 @@ struct Material
 	Color diffuseColor = Color::white;
 	Color specularColor = Color::white;
 	float specularExp = 0.0f; // shininess exponent
+	float refractiveIndex = 1.0f;
+
 	float kd = 0.0f; // diffuse coefficient
 	float ks = 0.0f; // specular coefficient
-	float kr = 0.0f;  // reflectivity coefficient
+	float kr = 0.0f;  // reflection coefficient
+	float kt = 0.0f;  // refraction coefficient
 
 	static const Material ruby;
 	static const Material emerald;
 	static const Material sapphire;
 	static const Material matteGranite;
 	static const Material mirror;
+	static const Material glass;
 };
 
-const Material Material::ruby =			{ Color(0.6f, 0.05f, 0.1f),	 Color::white,	150.0f, 0.5f, 0.9f, 0.1f };
-const Material Material::emerald =		{ Color(0.0f, 0.4f, 0.2f),	 Color::white,	100.0f, 0.6f, 0.8f, 0.1f };
-const Material Material::sapphire =		{ Color(0.1f, 0.2f, 0.7f),	 Color::white,	200.0f, 0.4f, 1.0f, 0.1f };
-const Material Material::matteGranite = { Color(0.35f, 0.35f, 0.35f),Color::white,	10.0f,	0.3f, 0.05f, 0.0f };
-const Material Material::mirror =		{ Color(1.0f, 1.0f, 1.0f),	 Color::white,	1000.0f,0.1f, 1.0f, 0.8f};
+const Material Material::ruby =			{ Color::ruby,		Color::white,	150.0f,  1.0f, 0.5f, 0.9f,	0.1f, 0.0f };
+const Material Material::emerald =		{ Color::emerald,	Color::white,	100.0f,  1.0f, 0.6f, 0.8f,	0.1f, 0.0f };
+const Material Material::sapphire =		{ Color::sapphire,	Color::white,	200.0f,  1.0f, 0.4f, 1.0f,	0.1f, 0.0f };
+const Material Material::matteGranite = { Color::granite,	Color::white,	10.0f,	 1.0f, 0.3f, 0.05f,	0.0f, 0.0f };
+const Material Material::mirror =		{ Color::white,		Color::white,	1000.0f, 1.0f, 0.1f, 1.0f,	0.8f, 0.0f };
+const Material Material::glass =		{ Color::white,		Color::white,	1000.0f, 1.6f, 0.1f, 1.0f,	0.2f, 0.8f };
 
 struct Vector2
 {
@@ -116,6 +123,7 @@ const Vector3 Vector3::zero = Vector3(0.0f, 0.0f, 0.0f);
 const Vector3 Vector3::unit = Vector3(1.0f, 1.0f, 1.0f);
 
 Vector3 operator*(float f, const Vector3& v) { return v * f; }
+Vector3 operator-(const Vector3& v) { return v * -1.0f; }
 
 struct Ray
 {
@@ -204,12 +212,12 @@ struct Camera
 void LoadScene(Scene& outScene)
 {
 	outScene.spheres = {
-		{ Vector3(0,	50,	 400),	50.0f, Material::ruby },
-		{ Vector3(150,  200, 800),	150.0f, Material::emerald },
-		{ Vector3(-100, -100,400),  80.0f, Material::mirror },
-		{ Vector3(150, -100, 500),	80.0f, Material::matteGranite },
-		{ Vector3(-250, 150, 800),	150.0f, Material::mirror },
-		{ Vector3(50, -100, 850),	150.0f, Material::sapphire }
+		{ Vector3(0,	50,		400),	50.0f,	Material::ruby },
+		{ Vector3(150,	200,	700),	150.0f, Material::emerald },
+		{ Vector3(-80,	-80,	400),	60.0f,	Material::glass },
+		{ Vector3(150,	-100,	500),	80.0f,	Material::matteGranite },
+		{ Vector3(-250,	150,	700),	150.0f, Material::mirror },
+		{ Vector3(50,	-100,	750),	150.0f, Material::sapphire }
 	};
 
 	outScene.lights = {
@@ -257,10 +265,38 @@ Vector3 Reflect(const Vector3& inDir, const Vector3& normal)
 {
 	return inDir - 2.f * normal * (inDir.Dot(normal));
 }
+
+bool Refract(const Vector3& inDir, const Vector3& normal, float refractiveIndex, Vector3& outRefractDir)
+{ 
+	assert(refractiveIndex > 0 && "refractiveIndex must always be greater than 0.");
+
+	float cosi = - std::clamp(inDir.Dot(normal), -1.0f, 1.0f);
+	float etai = 1;
+	float etat = refractiveIndex;
+	Vector3 n = normal;
+	if (cosi < 0) { // if the ray is inside the object, swap the indices and invert the normal to get the correct result
+		cosi = -cosi;
+		std::swap(etai, etat); 
+		n = -normal;
+	}
+
+	float eta = etai / etat;
+	float k = 1 - eta * eta * (1 - cosi * cosi); 
+	if (k < 0)
+	{
+		return false;
+	}
+	else
+	{
+		outRefractDir = inDir * eta + n * (eta * cosi - sqrtf(k));
+		return true;
+	}
+}
+
 Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& normal, const Material& material, const Scene& scene)
 {
-	float diffuseIntensity = 0.0f;
-	float specularLightIntensity = 0.0f;
+	float diffuseIntensitySum = 0.0f;
+	float specularIntensitySum = 0.0f;
 
 	for (const Light& light : scene.lights)
 	{
@@ -280,12 +316,12 @@ Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& norma
 			}
 		}
 
-		diffuseIntensity += light.intensity * std::max(0.0f, (lightDir.Dot(normal)));
-		specularLightIntensity += std::pow(std::max(0.f, Reflect(lightDir, normal).Dot(viewDir)), material.specularExp);
+		diffuseIntensitySum += light.intensity * std::max(0.0f, (lightDir.Dot(normal)));
+		specularIntensitySum += std::pow(std::max(0.f, Reflect(lightDir, normal).Dot(viewDir)), material.specularExp);
 	}
 
-	Color result = material.kd * material.diffuseColor * diffuseIntensity;
-	result += material.ks * material.specularColor * specularLightIntensity;
+	Color result = material.kd * material.diffuseColor * diffuseIntensitySum;
+	result += material.ks * material.specularColor * specularIntensitySum;
 	return result;
 }
 
@@ -297,7 +333,7 @@ Color CastRay(const Ray& ray, const Scene& scene, int depth)
 		return scene.backgroundColor;
 	}
 
-	Color reflectColor;
+	Color reflectedColor;
 	if (hitResult.material.kr > 0.0f)
 	{
 		Vector3 reflectionDir = Reflect(ray.dir, hitResult.normal);
@@ -306,10 +342,32 @@ Color CastRay(const Ray& ray, const Scene& scene, int depth)
 		Ray reflectionRay(hitResult.pos, reflectionDir);
 		reflectionRay.ApplyPosBias(hitResult.normal);
 
-		reflectColor = hitResult.material.kr * CastRay(reflectionRay, scene, depth - 1);
+		reflectedColor = hitResult.material.kr * CastRay(reflectionRay, scene, depth - 1);
 	}
 
-	return CalcLight(ray.dir, hitResult.pos, hitResult.normal, hitResult.material, scene) + reflectColor;
+	Color refractColor;
+	if (hitResult.material.kt > 0.0f && hitResult.material.refractiveIndex > 0)
+	{
+		Vector3 refractionDir;
+		
+		if(Refract(ray.dir, hitResult.normal, hitResult.material.refractiveIndex, refractionDir))
+		{ 
+			refractionDir.Normalize();
+
+			Ray refractionRay(hitResult.pos, refractionDir);
+			refractionRay.ApplyPosBias(hitResult.normal);
+
+			refractColor = hitResult.material.kt * CastRay(refractionRay, scene, depth - 1);
+		}
+	}
+
+	Color lightColor;
+	if (hitResult.material.kd > 0.0f || hitResult.material.ks > 0.0f)
+	{
+		lightColor = CalcLight(ray.dir, hitResult.pos, hitResult.normal, hitResult.material, scene);
+	}
+
+	return  lightColor + refractColor + reflectedColor;
 }
 
 int main() 
@@ -332,13 +390,14 @@ int main()
 	{
 		for (int y = 0; y < height; ++y)
 		{
-			const int index = y * width + x;
-			Ray ray(Vector3::zero, Vector3::unit);
-			ray.dir.x = (x - (width  * 0.5f)) * hRatio;
-			ray.dir.y = (y - (height * 0.5f)) * vRatio * (-1); // frame buffer 기준 +y가 하단이기 때문에 Flip
-			ray.dir.Normalize();
-			ray.pos = camera.pos;
+			Vector3 rayDir(	(x - (width * 0.5f)) * hRatio,
+							(y - (height * 0.5f)) * vRatio * (-1), // frame buffer 기준 +y가 하단이기 때문에 Flip
+							1.0f);
 
+			rayDir.Normalize();
+			Ray ray(camera.pos, rayDir);
+
+			const int index = y * width + x;
 			frameBuffer[index] = CastRay(ray, scene, rayTracingDepth);
 		}
 	}
