@@ -11,14 +11,14 @@ bool IsNearlyEqual(float a, float b, float epsilon = 1e-3f)
 	return std::abs(a - b) < epsilon;
 }
 
-double degreesToRadians(double degrees) 
+double DegreesToRadians(double degrees) 
 {
 	return degrees * M_PI / 180.0;
 }
 
 struct Color
 {
-	Color() {}
+	Color() = default;
 	Color(float inR, float inG, float inB)
 		:r(inR), g(inG), b(inB)
 	{}
@@ -27,17 +27,14 @@ struct Color
 	float b = 0;
 
 	Color operator*(float f) const { return Color(r * f, g * f, b * f); }
+	Color operator+(float f) const { return Color(r + f, g + f, b + f); }
 
 	static const Color red;
 	static const Color green;
 	static const Color blue;
-	static const Color yellow;
-	static const Color magenta;
-	static const Color cyan;
-	static const Color white;
-	static const Color black;
 	static const Color gray;
 };
+Color operator*(float f, const Color& color) { return color * f; }
 
 std::ostream& operator<<(std::ostream& stream, const Color& color) 
 {
@@ -52,23 +49,29 @@ std::ostream& operator<<(std::ostream& stream, const Color& color)
 const Color Color::red = { 1.0f, 0.0f, 0.0f };
 const Color Color::green = { 0.0f, 1.0f, 0.0f };
 const Color Color::blue = { 0.0f, 0.0f, 1.0f };
-const Color Color::yellow = { 1.0f, 1.0f, 0.0f };
-const Color Color::magenta = { 1.0f, 0.0f, 1.0f };
-const Color Color::cyan = { 0.0f, 1.0f, 1.0f };
-const Color Color::white = { 1.0f, 1.0f, 1.0f };
-const Color Color::black = { 0.0f, 0.0f, 0.0f };
 const Color Color::gray = { 0.3f, 0.3f, 0.3f };
 
 struct Material
 {
-	Material(const Color& color) : diffuseColor(color) {}
-	Material() : diffuseColor() {}
 	Color diffuseColor;
+	float specularExp = 50.0f; // shininess exponent
+	float kd = 1.0f; // diffuse coefficient
+	float ks = 0.5f; // specular coefficient
+
+	static const Material Ruby;
+	static const Material Emerald;
+	static const Material Sapphire;
+	static const Material MatteGranite;
 };
+
+const Material Material::Ruby =			{ Color(0.6f, 0.05f, 0.1f),		150.0f, 0.5f, 0.9f };
+const Material Material::Emerald =		{ Color(0.0f, 0.4f, 0.2f),		100.0f, 0.6f, 0.8f };
+const Material Material::Sapphire =		{ Color(0.1f, 0.2f, 0.7f),		200.0f, 0.4f, 1.0f };
+const Material Material::MatteGranite = { Color(0.35f, 0.35f, 0.35f),	10.0f,	0.3f, 0.05f };
 
 struct Vector2
 {
-	Vector2() {}
+	Vector2() = default;
 	Vector2(float inX, float inY)
 		:x(inX), y(inY)
 	{}
@@ -78,7 +81,7 @@ struct Vector2
 
 struct Vector3
 {
-	Vector3() {}
+	Vector3() = default;
 	Vector3(float inX, float inY, float inZ)
 		:x(inX), y(inY), z(inZ)
 	{}
@@ -107,9 +110,6 @@ struct Ray
 
 struct Sphere 
 {
-	Sphere(const Vector3& inCenter, float inRadius, const Material& inMaterial)
-		:center(inCenter), radius(inRadius), material(inMaterial)
-	{}
 	Vector3 center;
 	float radius;
 	Material material;
@@ -173,14 +173,14 @@ struct Scene
 // 카메라 위치 항상 0,0,0 기준.
 struct Camera
 {
-	Camera(float inFocalLength, float inHorizontalFov, float inVerticalFov)
-		: focalLength(inFocalLength), pos(0.0f, 0.0f, 0.0f)
+	Camera(float inScreenDistance, float inHorizontalFov, float inVerticalFov)
+		: screenDistance(inScreenDistance), pos(0.0f, 0.0f, 0.0f)
 	{
-		screenSize.x = static_cast<float>(std::tan(degreesToRadians(inHorizontalFov * 0.5f))) * focalLength;
-		screenSize.y = static_cast<float>(std::tan(degreesToRadians(inVerticalFov * 0.5f))) * focalLength;
+		screenSize.x = static_cast<float>(std::tan(DegreesToRadians(inHorizontalFov * 0.5f))) * screenDistance;
+		screenSize.y = static_cast<float>(std::tan(DegreesToRadians(inVerticalFov * 0.5f))) * screenDistance;
 	}
 
-	float focalLength;
+	float screenDistance;
 	Vector2 screenSize;
 	Vector3 pos;
 };
@@ -188,13 +188,16 @@ struct Camera
 void LoadScene(Scene& outScene)
 {
 	outScene.spheres = {
-		{ {0, 0, 600}, 200, Color::red },
-		{ {100, 200, 800}, 200, Color::green },
-		{ {-300, -100, 700}, 100, Color::blue }
+		{ Vector3(0,    0, 600),	200.0f, Material::Ruby },
+		{ Vector3(100,  200, 800),	200.0f, Material::Emerald },
+		{ Vector3(-300, -100, 700), 100.0f, Material::Sapphire },
+		{ Vector3(200, -150, 650),	150.0f, Material::MatteGranite }
 	};
 
 	outScene.lights = {
-		{{-100, 300, 100}, 1.0f}
+		{ {-100, 150, 100}, 1.0f},
+		{ {0, 500, 300},	1.0f},
+		{ {200, 400, 200},	1.0f}
 	};
 
 	outScene.backgroundColor = Color::gray;
@@ -232,6 +235,23 @@ bool CheckIntersect(const Ray& ray, const Scene& scene, HitResult& outHitResult)
 	}
 }
 
+Vector3 Reflect(const Vector3& lightDir, const Vector3& normal) {
+	return lightDir - normal * 2.f * (lightDir.Dot(normal));
+}
+Color CalcLight(const Vector3& viewDir, const Vector3& pos, const Vector3& normal, const Material& material, const std::vector<Light>& lights)
+{
+	float diffuseIntensity = 0.0f;
+	float specularLightIntensity = 0.0f;
+
+	for (const Light& light : lights)
+	{
+		Vector3 lightDir = light.Pos - pos;
+		lightDir.Normalize();
+		diffuseIntensity += light.intensity * std::max(0.0f, (lightDir.Dot(normal)));
+		specularLightIntensity += std::pow(std::max(0.f, Reflect(lightDir, normal).Dot(viewDir)), material.specularExp);
+	}
+	return (material.kd * material.diffuseColor * diffuseIntensity) + (material.ks * specularLightIntensity);
+}
 Color CastRay(const Ray& ray, const Scene& scene)
 {
 	HitResult hitResult;
@@ -240,15 +260,7 @@ Color CastRay(const Ray& ray, const Scene& scene)
 		return scene.backgroundColor;
 	}
 
-	float diffuseIntensity = 0.0f;
-	for (const Light& light : scene.lights)
-	{
-		Vector3 lightDir = light.Pos - hitResult.pos;
-		lightDir.Normalize();
-		diffuseIntensity += light.intensity * std::max(0.0f, (lightDir.Dot(hitResult.normal)));
-	}
-	diffuseIntensity = std::clamp(diffuseIntensity, 0.0f, 1.0f);
-	return hitResult.material.diffuseColor * diffuseIntensity;
+	return CalcLight(ray.dir, hitResult.pos, hitResult.normal, hitResult.material, scene.lights);
 }
 
 int main() 
@@ -274,7 +286,7 @@ int main()
 			Ray ray;
 			ray.dir.x = (x - (width  * 0.5f)) * hRatio;
 			ray.dir.y = (y - (height * 0.5f)) * vRatio * (-1); // frame buffer 기준 +y가 하단이기 때문에 Flip
-			ray.dir.z = camera.focalLength;
+			ray.dir.z = camera.screenDistance;
 			ray.dir.Normalize();
 			ray.pos = camera.pos;
 
