@@ -5,6 +5,77 @@
 #include <limits>
 #include <algorithm>
 #include <assert.h>
+#include <chrono>
+#include <string>
+#include <unordered_map>
+#include <iostream>
+#include <iomanip>
+#include <locale>
+
+// 숫자에 콤마 찍는 사용자 정의 numpunct
+struct CommaNumpunct : std::numpunct<char> {
+protected:
+	char do_thousands_sep() const override { return ','; }
+	std::string do_grouping() const override { return "\3"; }
+};
+
+class TimerLogger {
+public:
+	static TimerLogger& Instance() {
+		static TimerLogger instance;
+		return instance;
+	}
+
+	void AddRecord(const std::string& name, double seconds) {
+		auto& entry = records_[name];
+		entry.totalTime += seconds;
+		entry.callCount += 1;
+	}
+
+	~TimerLogger() {
+		std::cout << "\n=== Timer Log ===\n";
+
+		// 콤마 출력용 locale 설정
+		std::locale commaLocale(std::cout.getloc(), new CommaNumpunct());
+		std::cout.imbue(commaLocale);
+
+		for (const auto& [name, entry] : records_) {
+			std::cout << std::setw(30) << std::left << name
+				<< ": " << std::fixed << std::setprecision(3)
+				<< entry.totalTime << "s"
+				<< " (" << entry.callCount << " calls)\n";
+		}
+	}
+
+private:
+	struct Record {
+		double totalTime = 0.0;
+		int callCount = 0;
+	};
+
+	std::unordered_map<std::string, Record> records_;
+};
+
+class ScopeTimer {
+public:
+	ScopeTimer(const std::string& name)
+		: m_name(name), m_start(std::chrono::high_resolution_clock::now()) {}
+
+	~ScopeTimer() {
+		auto end = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double> duration = end - m_start;
+		TimerLogger::Instance().AddRecord(m_name, duration.count());
+	}
+
+private:
+	std::string m_name;
+	std::chrono::high_resolution_clock::time_point m_start;
+};
+
+// 매크로 정의
+#define CONCAT_INTERNAL(x, y) x##y
+#define CONCAT(x, y) CONCAT_INTERNAL(x, y)
+#define SCOPE_TIMER(name) ScopeTimer CONCAT(__scope_timer_, __LINE__)(#name)
 
 bool IsNearlyEqual(float a, float b, float epsilon = 1e-3f)
 {
@@ -213,9 +284,9 @@ struct Camera
 void LoadScene(Scene& outScene)
 {
 	outScene.spheres = {
-		{ Vector3(0,	50,		400),	50.0f,	Material::ruby },
+		{ Vector3(0,	50,		400),	50.0f,	Material::glass },
 		{ Vector3(150,	200,	700),	150.0f, Material::emerald },
-		{ Vector3(-80,	-80,	400),	60.0f,	Material::glass },
+		{ Vector3(-80,	-80,	400),	60.0f,	Material::ruby },
 		{ Vector3(150,	-100,	500),	80.0f,	Material::matteGranite },
 		{ Vector3(-250,	150,	700),	150.0f, Material::mirror },
 		{ Vector3(50,	-100,	750),	150.0f, Material::sapphire }
@@ -369,11 +440,13 @@ Color CastRay(const Ray& ray, const Scene& scene, int depth)
 
 int main() 
 {
+	SCOPE_TIMER("main");
+
 	constexpr int width = 1024;
 	constexpr int height = 768;
 	constexpr int numPixel = width * height;
 	const Camera camera(120.f, 100.f);
-	constexpr int rayTracingDepth = 10;
+	constexpr int rayTracingDepth = 4;
 
 	Scene scene;
 	LoadScene(scene);
